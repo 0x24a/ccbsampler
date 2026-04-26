@@ -8,10 +8,13 @@ import io
 HIFIGAN_URL = "https://pub-f707c07a009b432aab05361d2bc09e9e.r2.dev/hifigan.zip"
 HNSEP_URL = "https://pub-f707c07a009b432aab05361d2bc09e9e.r2.dev/hnsep.zip"
 
+
 def _download_file(url: str) -> bytes:
     with Progress(transient=True) as progress:
         file_size = httpx.head(url, follow_redirects=True)
-        task = progress.add_task("Downloading", total=int(file_size.headers.get("Content-Length")))
+        task = progress.add_task(
+            "Downloading", total=int(file_size.headers.get("Content-Length"))
+        )
         data = b""
         with httpx.stream("GET", url, follow_redirects=True) as stream:
             for chunk in stream.iter_bytes():
@@ -19,7 +22,10 @@ def _download_file(url: str) -> bytes:
                 data += chunk
     return data
 
+
 app = typer.Typer()
+
+
 @app.command("models")
 def download_models():
     print("[bold]CCBSampler Setup[/bold]")
@@ -42,7 +48,7 @@ def download_models():
     print("      [green][bold]OK[/bold][/green]")
     print()
     print("[green][bold]All models downloaded![/bold][/green]")
-    
+
 
 if __name__ == "__main__":
     app()

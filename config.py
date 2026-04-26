@@ -76,7 +76,9 @@ class Settings(BaseSettings):
 def load_settings(path: str | Path = "config.yaml") -> Settings:
     path = Path(path)
     if not path.exists():
-        logging.fatal("Config file not found! Please run `uv run setup.py` to create one.")
+        logging.fatal(
+            "Config file not found! Please run `uv run setup.py` to create one."
+        )
         sys.exit(1)
     with open(path) as f:
         data = yaml.safe_load(f) or {}

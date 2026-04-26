@@ -56,7 +56,9 @@ class PitchAdjustableMelSpectrogram:
 
         hann_window_key = f"{key_shift}_{y.device}"
         if hann_window_key not in self.hann_window:
-            self.hann_window[hann_window_key] = torch.hann_window(win_size_new, device=y.device)
+            self.hann_window[hann_window_key] = torch.hann_window(
+                win_size_new, device=y.device
+            )
 
         y = F.pad(
             y.unsqueeze(1),

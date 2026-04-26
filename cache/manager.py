@@ -69,7 +69,9 @@ class CacheManager:
                         logger.info("Cache hit (after lock): %s", cache_path.name)
                         return features
                     except (EOFError, OSError, ValueError) as e:
-                        logger.warning("Corrupted cache %s (%s), regenerating", cache_path.name, e)
+                        logger.warning(
+                            "Corrupted cache %s (%s), regenerating", cache_path.name, e
+                        )
                         try:
                             os.remove(cache_path)
                         except OSError:

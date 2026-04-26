@@ -17,25 +17,27 @@ from render_queue.gpu_queue import GPUQueue
 from routes.resample import router as resample_router
 from services.resampler import Renderer
 
-logging.config.dictConfig({
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "default": {
-            "()": "uvicorn.logging.DefaultFormatter",
-            "fmt": "%(levelprefix)s (ccbsampler) %(message)s",
-            "use_colors": None,
+logging.config.dictConfig(
+    {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "()": "uvicorn.logging.DefaultFormatter",
+                "fmt": "%(levelprefix)s (ccbsampler) %(message)s",
+                "use_colors": None,
+            },
         },
-    },
-    "handlers": {
-        "default": {
-            "class": "logging.StreamHandler",
-            "formatter": "default",
-            "stream": "ext://sys.stderr",
+        "handlers": {
+            "default": {
+                "class": "logging.StreamHandler",
+                "formatter": "default",
+                "stream": "ext://sys.stderr",
+            },
         },
-    },
-    "root": {"handlers": ["default"], "level": "INFO"},
-})
+        "root": {"handlers": ["default"], "level": "INFO"},
+    }
+)
 logger = logging.getLogger(__name__)
 
 

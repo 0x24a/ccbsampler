@@ -20,8 +20,20 @@ from schemas import RenderMetrics, ResampleRequest, ResampleResponse
 
 logger = logging.getLogger(__name__)
 
-_NOTES = {"C": 0, "C#": 1, "D": 2, "D#": 3, "E": 4, "F": 5,
-          "F#": 6, "G": 7, "G#": 8, "A": 9, "A#": 10, "B": 11}
+_NOTES = {
+    "C": 0,
+    "C#": 1,
+    "D": 2,
+    "D#": 3,
+    "E": 4,
+    "F": 5,
+    "F#": 6,
+    "G": 7,
+    "G#": 8,
+    "A": 9,
+    "A#": 10,
+    "B": 11,
+}
 _NOTE_RE = re.compile(r"([A-G]#?)(-?\d+)")
 _HNSEP_FLAGS = frozenset({"Hb", "Hv", "Ht"})
 
@@ -29,10 +41,10 @@ _HNSEP_FLAGS = frozenset({"Hb", "Hv", "Ht"})
 @dataclass
 class InferencePayload:
     req: ResampleRequest
-    mel_origin: np.ndarray # [n_mels, T_origin]
+    mel_origin: np.ndarray  # [n_mels, T_origin]
     scale: float
-    feature_ms: float # time spent on feature extraction / cache
-    queue_ms: float = 0.0 # filled in by GPUQueue worker before infer
+    feature_ms: float  # time spent on feature extraction / cache
+    queue_ms: float = 0.0  # filled in by GPUQueue worker before infer
 
 
 def _note_to_midi(x: str) -> int:
@@ -75,8 +87,14 @@ def _pre_emphasis_tension(wave: torch.Tensor, b: float, cfg: Settings) -> torch.
     w = F.pad(w, (0, pad))
 
     win = torch.hann_window(a.win_size, device=w.device)
-    spec = torch.stft(w, a.n_fft, hop_length=a.hop_size, win_length=a.win_size,
-                      window=win, return_complex=True)
+    spec = torch.stft(
+        w,
+        a.n_fft,
+        hop_length=a.hop_size,
+        win_length=a.win_size,
+        window=win,
+        return_complex=True,
+    )
     amp = torch.abs(spec)
     phase = torch.atan2(spec.imag, spec.real)
     amp_db = torch.log(torch.clamp(amp, min=1e-9))
@@ -87,21 +105,27 @@ def _pre_emphasis_tension(wave: torch.Tensor, b: float, cfg: Settings) -> torch.
     amp_db = amp_db + torch.clamp(freq_filter, -2.0, 2.0).unsqueeze(0).unsqueeze(2)
 
     filtered = torch.istft(
-        torch.complex(torch.exp(amp_db) * torch.cos(phase),
-                      torch.exp(amp_db) * torch.sin(phase)),
-        n_fft=a.n_fft, hop_length=a.hop_size, win_length=a.win_size, window=win,
+        torch.complex(
+            torch.exp(amp_db) * torch.cos(phase), torch.exp(amp_db) * torch.sin(phase)
+        ),
+        n_fft=a.n_fft,
+        hop_length=a.hop_size,
+        win_length=a.win_size,
+        window=win,
     )
     orig_max = torch.max(torch.abs(w))
     filt_max = torch.max(torch.abs(filtered))
     filtered = filtered * (orig_max / filt_max) * (float(np.clip(b / -15, 0, 0.33)) + 1)
     return filtered.unsqueeze(1)[:, :, :orig_len]
 
+
 class Renderer:
-    def __init__(self, settings: Settings, models: ModelBundle, cache: CacheManager) -> None:
+    def __init__(
+        self, settings: Settings, models: ModelBundle, cache: CacheManager
+    ) -> None:
         self.cfg = settings
         self.models = models
         self.cache = cache
-
 
     async def prepare(self, req: ResampleRequest) -> InferencePayload:
         """
@@ -112,7 +136,9 @@ class Renderer:
         t0 = time.monotonic()
         mel_origin, scale = await self._get_features(req)
         feature_ms = (time.monotonic() - t0) * 1000
-        return InferencePayload(req=req, mel_origin=mel_origin, scale=scale, feature_ms=feature_ms)
+        return InferencePayload(
+            req=req, mel_origin=mel_origin, scale=scale, feature_ms=feature_ms
+        )
 
     def infer(self, payload: InferencePayload) -> ResampleResponse:
         """Sync: vocoder inference + write output file."""
@@ -129,9 +155,14 @@ class Renderer:
             logger.info(
                 "%-30s  feature=%5.0fms  queue=%5.0fms  infer=%5.0fms  total=%5.0fms",
                 f"{Path(payload.req.in_file).stem} → {Path(payload.req.out_file).name}",
-                metrics.feature_ms, metrics.queue_ms, metrics.infer_ms, metrics.total_ms,
+                metrics.feature_ms,
+                metrics.queue_ms,
+                metrics.infer_ms,
+                metrics.total_ms,
             )
-            return ResampleResponse(status="ok", out_file=payload.req.out_file, metrics=metrics)
+            return ResampleResponse(
+                status="ok", out_file=payload.req.out_file, metrics=metrics
+            )
         except Exception as exc:
             logger.exception("Inference failed for %s", payload.req.in_file)
             return ResampleResponse(status="error", error=str(exc))
@@ -150,7 +181,7 @@ class Renderer:
         hb = int(flags.get("Hb", 100))
         hv = int(flags.get("Hv", 100))
         ht = int(flags.get("Ht", 0))
-        g  = int(flags.get("g", 0))
+        g = int(flags.get("g", 0))
         flag_suffix = f"Hb{hb}_Hv{hv}_Ht{ht}_g{g}"
 
         wav_path = Path(req.in_file)
@@ -215,16 +246,20 @@ class Renderer:
         mel_origin = payload.mel_origin.copy()
         scale = payload.scale
 
-        thop_o = a.origin_hop_size / a.sample_rate # hop time at origin resolution
-        thop   = a.hop_size / a.sample_rate # hop time at render resolution
+        thop_o = a.origin_hop_size / a.sample_rate  # hop time at origin resolution
+        thop = a.hop_size / a.sample_rate  # hop time at render resolution
 
         t_area = np.arange(mel_origin.shape[1]) * thop_o + thop_o / 2
         total_time = t_area[-1] + thop_o / 2
 
         vel = np.exp2(1.0 - req.velocity / 100.0)
         start = req.offset / 1000.0
-        end   = (start - req.cutoff / 1000.0) if req.cutoff < 0 else (total_time - req.cutoff / 1000.0)
-        con   = start + req.consonant / 1000.0
+        end = (
+            (start - req.cutoff / 1000.0)
+            if req.cutoff < 0
+            else (total_time - req.cutoff / 1000.0)
+        )
+        con = start + req.consonant / 1000.0
         length_req = req.length / 1000.0
 
         if p.loop_mode or flags.get("He") is True:
@@ -241,20 +276,28 @@ class Renderer:
             stretch_length = end - con
 
         mel_interp = interp.interp1d(t_area, mel_origin, axis=1)
-        scaling_ratio = max(length_req / stretch_length, 1.0) if stretch_length < length_req else 1.0
+        scaling_ratio = (
+            max(length_req / stretch_length, 1.0)
+            if stretch_length < length_req
+            else 1.0
+        )
 
         def stretch(t: np.ndarray) -> np.ndarray:
-            return np.where(t < vel * con, t / vel, con + (t - vel * con) / scaling_ratio)
+            return np.where(
+                t < vel * con, t / vel, con + (t - vel * con) / scaling_ratio
+            )
 
         n_frames = int((con * vel + (total_time - con) * scaling_ratio) / thop) + 1
         t_stretched = np.arange(n_frames) * thop + thop / 2
 
         cut_l = max(int((start * vel + thop / 2) / thop) - p.fill, 0)
-        cut_r = max(n_frames - int((length_req + con * vel + thop / 2) / thop) - p.fill, 0)
-        t_stretched = t_stretched[cut_l: n_frames - cut_r]
+        cut_r = max(
+            n_frames - int((length_req + con * vel + thop / 2) / thop) - p.fill, 0
+        )
+        t_stretched = t_stretched[cut_l : n_frames - cut_r]
 
         new_start = start * vel - cut_l * thop
-        new_end   = (length_req + con * vel) - cut_l * thop
+        new_end = (length_req + con * vel) - cut_l * thop
 
         mel_render = mel_interp(np.clip(stretch(t_stretched), 0, t_area[-1]))
 
@@ -271,22 +314,26 @@ class Renderer:
         f0_render = _midi_to_hz(pitch_render)
 
         mel_t = torch.from_numpy(mel_render).unsqueeze(0).to(dtype=torch.float32)
-        f0_t  = torch.from_numpy(f0_render).unsqueeze(0).to(dtype=torch.float32)
+        f0_t = torch.from_numpy(f0_render).unsqueeze(0).to(dtype=torch.float32)
         wav_full = self.models.vocoder.infer(mel_t, f0_t)
         logger.debug(
             "vocoder: mel_frames=%d wav_samples=%d expected=%d",
-            mel_render.shape[1], len(wav_full), mel_render.shape[1] * self.cfg.audio.hop_size,
+            mel_render.shape[1],
+            len(wav_full),
+            mel_render.shape[1] * self.cfg.audio.hop_size,
         )
 
         sample_l = int(new_start * a.sample_rate)
-        sample_r = int(new_end   * a.sample_rate)
+        sample_r = int(new_end * a.sample_rate)
         sample_r = min(sample_r, len(wav_full))
         render = wav_full[sample_l:sample_r]
 
         if len(render) == 0:
             logger.warning(
                 "Empty render slice (sample_l=%d sample_r=%d wav_len=%d), writing silence",
-                sample_l, sample_r, len(wav_full),
+                sample_l,
+                sample_r,
+                len(wav_full),
             )
             render = np.zeros(max(int(length_req * a.sample_rate), 1), dtype=np.float32)
 
@@ -296,13 +343,16 @@ class Renderer:
             deriv = np.gradient(pitch_render, t_audio)
             gain = 5.0 ** (1e-4 * a_c * deriv)
             audio_t = np.linspace(new_start, new_end, len(render), endpoint=False)
-            render = render * np.interp(audio_t, t_audio, gain, left=gain[0], right=gain[-1])
+            render = render * np.interp(
+                audio_t, t_audio, gain, left=gain[0], right=gain[-1]
+            )
 
         render = render / scale
 
         if p.wave_norm:
             try:
                 import pyloudnorm as pyln
+
                 p_val = flags.get("P")
                 strength = int(p_val) if isinstance(p_val, (int, float)) else 100
                 orig_len = len(render)

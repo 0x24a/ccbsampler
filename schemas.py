@@ -6,12 +6,30 @@ from pydantic import BaseModel, field_validator
 
 # All supported UTAU flags
 FlagKey = Literal[
-    "fe", "fl", "fo", "fv", "fp",
-    "ve", "vo",
-    "g", "t", "A", "B", "P", "S", "p", "R", "D", "C", "Z",
-    "Hv", "Hb", "Ht",
+    "fe",
+    "fl",
+    "fo",
+    "fv",
+    "fp",
+    "ve",
+    "vo",
+    "g",
+    "t",
+    "A",
+    "B",
+    "P",
+    "S",
+    "p",
+    "R",
+    "D",
+    "C",
+    "Z",
+    "Hv",
+    "Hb",
+    "Ht",
     # Switch-only flags (no value) — pass True
-    "G", "He",
+    "G",
+    "He",
 ]
 
 # bool must come before int, otherwise Pydantic v2 coerces True -> 1
@@ -21,7 +39,7 @@ FlagValue = Union[bool, int, float]
 class ResampleRequest(BaseModel):
     in_file: str
     out_file: str
-    pitch: str          # e.g. "A4", "C#3"
+    pitch: str  # e.g. "A4", "C#3"
     velocity: float
     flags: dict[FlagKey, FlagValue] = {}
     offset: float = 0.0
@@ -48,9 +66,9 @@ class ResampleRequest(BaseModel):
 
 
 class RenderMetrics(BaseModel):
-    feature_ms: float   # mel extraction (cache miss) or cache load
-    queue_ms: float     # time spent waiting in GPU queue
-    infer_ms: float     # vocoder inference + postprocessing
+    feature_ms: float  # mel extraction (cache miss) or cache load
+    queue_ms: float  # time spent waiting in GPU queue
+    infer_ms: float  # vocoder inference + postprocessing
     total_ms: float
 
 

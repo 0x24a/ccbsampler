@@ -21,6 +21,7 @@ class Vocoder(Protocol):
         """mel: [1, n_mels, T]  f0: [1, T]  → waveform ndarray [N]"""
         ...
 
+
 class CkptVocoder:
     def __init__(self, model_path: Path, device: torch.device) -> None:
         # import here so onnx-only setups don't need torch model code
@@ -45,7 +46,11 @@ class OnnxVocoder:
     def __init__(self, model_path: Path) -> None:
         available = onnxruntime.get_available_providers()
         providers: list[str] = []
-        for ep in ("DmlExecutionProvider", "CUDAExecutionProvider", "CoreMLExecutionProvider"):
+        for ep in (
+            "DmlExecutionProvider",
+            "CUDAExecutionProvider",
+            "CoreMLExecutionProvider",
+        ):
             if ep in available:
                 providers.append(ep)
                 break
@@ -54,11 +59,13 @@ class OnnxVocoder:
         self._session = onnxruntime.InferenceSession(
             str(model_path.resolve()), providers=providers
         )
-        logger.info("Loaded onnx vocoder with providers %s", self._session.get_providers())
+        logger.info(
+            "Loaded onnx vocoder with providers %s", self._session.get_providers()
+        )
 
     def infer(self, mel: torch.Tensor, f0: torch.Tensor) -> np.ndarray:
         mel_np = mel.cpu().numpy().astype(np.float32)  # [1, n_mels, T]
-        f0_np = f0.cpu().numpy().astype(np.float32)    # [1, T]
+        f0_np = f0.cpu().numpy().astype(np.float32)  # [1, T]
         output: Any = self._session.run(["waveform"], {"mel": mel_np, "f0": f0_np})[0]
         return output.reshape(-1)  # flatten [1,1,N] or [1,N] or [N] → [N]
 
@@ -80,6 +87,7 @@ def load_hnsep(model_path: Path, device: torch.device) -> HnsepBundle:
         def __getattr__(self, *a):
             val = dict.get(self, *a)
             return DotDict(val) if type(val) is dict else val
+
         __setattr__ = dict.__setitem__  # type: ignore[assignment]
         __delattr__ = dict.__delitem__  # type: ignore[assignment]
 
@@ -98,7 +106,9 @@ def load_hnsep(model_path: Path, device: torch.device) -> HnsepBundle:
     try:
         model.load_state_dict(torch.load(model_path, map_location="cpu"))
     except FileNotFoundError as e:
-        raise FileNotFoundError(f"Failed to load hnsep model: {e}\nPlease run `uv run setup.py models` to download the necessary models.")
+        raise FileNotFoundError(
+            f"Failed to load hnsep model: {e}\nPlease run `uv run setup.py models` to download the necessary models."
+        )
     model.eval()
     logger.info("Loaded hnsep model on %s", device)
     return HnsepBundle(model=model, args=args)
@@ -113,13 +123,14 @@ class ModelBundle:
 
 def _export_onnx(ckpt_path: Path) -> Path:
     from util.nsf_hifigan import load_model as load_hifigan
+
     onnx_path = ckpt_path.with_suffix(".onnx")
     logger.info("Exporting vocoder to ONNX: %s", onnx_path)
     generator, h = load_hifigan(ckpt_path)
     generator.eval()
     T = 100
     mel_dummy = torch.randn(1, h.num_mels, T)
-    f0_dummy  = torch.full((1, T), 440.0)
+    f0_dummy = torch.full((1, T), 440.0)
     with torch.no_grad():
         torch.onnx.export(
             generator,
@@ -128,8 +139,8 @@ def _export_onnx(ckpt_path: Path) -> Path:
             input_names=["mel", "f0"],
             output_names=["waveform"],
             dynamic_axes={
-                "mel":      {2: "frames"},
-                "f0":       {1: "frames"},
+                "mel": {2: "frames"},
+                "f0": {1: "frames"},
                 "waveform": {1: "samples"},
             },
             opset_version=18,
@@ -138,6 +149,7 @@ def _export_onnx(ckpt_path: Path) -> Path:
 
     # Inline external data so the .onnx is self-contained (required for CoreML EP)
     import onnx
+
     model_proto = onnx.load(str(onnx_path))
     onnx.save_model(
         model_proto,
@@ -145,7 +157,11 @@ def _export_onnx(ckpt_path: Path) -> Path:
         save_as_external_data=False,
     )
 
-    logger.info("ONNX export done: %s (%.1f MB)", onnx_path, onnx_path.stat().st_size / 1_048_576)
+    logger.info(
+        "ONNX export done: %s (%.1f MB)",
+        onnx_path,
+        onnx_path.stat().st_size / 1_048_576,
+    )
     return onnx_path
 
 
@@ -160,7 +176,9 @@ def load_models(settings: Settings) -> ModelBundle:
             logger.info("Found existing ONNX alongside ckpt, using it")
             vocoder: Vocoder = OnnxVocoder(onnx_path)
         else:
-            logger.info("No ONNX found, exporting from ckpt (one-time, may take a moment)")
+            logger.info(
+                "No ONNX found, exporting from ckpt (one-time, may take a moment)"
+            )
             onnx_path = _export_onnx(vocoder_path)
             vocoder = OnnxVocoder(onnx_path)
     else:

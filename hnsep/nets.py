@@ -72,16 +72,42 @@ class CascadedNet(nn.Module):
             nin //= 2
 
         self.stg1_low_band_net = nn.Sequential(
-            BaseNet(nin, nout // 2, self.nin_lstm // 2, nout_lstm, fixed_length=fixed_length),
+            BaseNet(
+                nin, nout // 2, self.nin_lstm // 2, nout_lstm, fixed_length=fixed_length
+            ),
             layers.Conv2DBNActiv(nout // 2, nout // 4, 1, 1, 0),
         )
-        self.stg1_high_band_net = BaseNet(nin, nout // 4, self.nin_lstm // 2, nout_lstm // 2, fixed_length=fixed_length)
+        self.stg1_high_band_net = BaseNet(
+            nin,
+            nout // 4,
+            self.nin_lstm // 2,
+            nout_lstm // 2,
+            fixed_length=fixed_length,
+        )
         self.stg2_low_band_net = nn.Sequential(
-            BaseNet(nout // 4 + nin, nout, self.nin_lstm // 2, nout_lstm, fixed_length=fixed_length),
+            BaseNet(
+                nout // 4 + nin,
+                nout,
+                self.nin_lstm // 2,
+                nout_lstm,
+                fixed_length=fixed_length,
+            ),
             layers.Conv2DBNActiv(nout, nout // 2, 1, 1, 0),
         )
-        self.stg2_high_band_net = BaseNet(nout // 4 + nin, nout // 2, self.nin_lstm // 2, nout_lstm // 2, fixed_length=fixed_length)
-        self.stg3_full_band_net = BaseNet(3 * nout // 4 + nin, nout, self.nin_lstm, nout_lstm, fixed_length=fixed_length)
+        self.stg2_high_band_net = BaseNet(
+            nout // 4 + nin,
+            nout // 2,
+            self.nin_lstm // 2,
+            nout_lstm // 2,
+            fixed_length=fixed_length,
+        )
+        self.stg3_full_band_net = BaseNet(
+            3 * nout // 4 + nin,
+            nout,
+            self.nin_lstm,
+            nout_lstm,
+            fixed_length=fixed_length,
+        )
         self.out = nn.Conv2d(nout, nin, 1, bias=False)
         self.aux_out = nn.Conv2d(3 * nout // 4, nin, 1, bias=False)
 
@@ -95,7 +121,9 @@ class CascadedNet(nn.Module):
         aux1 = torch.cat([l1, h1], dim=2)
         l2 = self.stg2_low_band_net(torch.cat([x[:, :, :bandw], l1], dim=1))
         h2 = self.stg2_high_band_net(torch.cat([x[:, :, bandw:], h1], dim=1))
-        f3 = self.stg3_full_band_net(torch.cat([x, aux1, torch.cat([l2, h2], dim=2)], dim=1))
+        f3 = self.stg3_full_band_net(
+            torch.cat([x, aux1, torch.cat([l2, h2], dim=2)], dim=1)
+        )
 
         if self.is_complex:
             mask = self.out(f3)
@@ -135,8 +163,14 @@ class CascadedNet(nn.Module):
             T_pad = self.seg_length * ((T1 - 1) // self.seg_length + 1) - T1
             nl_pad = T_pad // 2 // self.hop_length
             x = F.pad(x, (nl_pad * self.hop_length, T_pad - nl_pad * self.hop_length))
-        spec = torch.stft(x, n_fft=self.n_fft, hop_length=self.hop_length,
-                          return_complex=True, window=self.window, pad_mode="constant")  # type: ignore[arg-type]
+        spec = torch.stft(
+            x,
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            return_complex=True,
+            window=self.window,
+            pad_mode="constant",
+        )  # type: ignore[arg-type]
         return spec.reshape(B, C, spec.shape[-2], spec.shape[-1])
 
     def spec2audio(self, x: torch.Tensor) -> torch.Tensor:
@@ -151,9 +185,17 @@ class CascadedNet(nn.Module):
         nl_pad = T_pad // 2 // self.hop_length
         Tl_pad = nl_pad * self.hop_length
         xp = F.pad(x.reshape(B * C, T), (Tl_pad, T_pad - Tl_pad))
-        spec = torch.stft(xp, n_fft=self.n_fft, hop_length=self.hop_length,
-                          return_complex=True, window=self.window, pad_mode="constant")  # type: ignore[arg-type]
+        spec = torch.stft(
+            xp,
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            return_complex=True,
+            window=self.window,
+            pad_mode="constant",
+        )  # type: ignore[arg-type]
         spec = spec.reshape(B, C, spec.shape[-2], spec.shape[-1])
-        spec_pred = (spec * self.forward(spec)).reshape(B * C, spec.shape[-2], spec.shape[-1])
+        spec_pred = (spec * self.forward(spec)).reshape(
+            B * C, spec.shape[-2], spec.shape[-1]
+        )
         x_pred = torch.istft(spec_pred, self.n_fft, self.hop_length, window=self.window)  # type: ignore[arg-type]
         return x_pred[:, Tl_pad : Tl_pad + T].reshape(B, C, T)

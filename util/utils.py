@@ -80,7 +80,7 @@ def denorm_f0(
     uv: np.ndarray | None,
     pitch_padding: np.ndarray | None = None,
 ) -> np.ndarray:
-    f0 = 2.0 ** f0
+    f0 = 2.0**f0
     if uv is not None:
         f0[uv > 0] = 0
     if pitch_padding is not None:
@@ -106,7 +106,9 @@ def interp_f0(
     uv_mask: np.ndarray = (f0 == 0) if uv is None else uv
     f0 = norm_f0(f0, uv_mask)
     if uv_mask.any() and not uv_mask.all():
-        f0[uv_mask] = np.interp(np.where(uv_mask)[0], np.where(~uv_mask)[0], f0[~uv_mask])
+        f0[uv_mask] = np.interp(
+            np.where(uv_mask)[0], np.where(~uv_mask)[0], f0[~uv_mask]
+        )
     return denorm_f0(f0, uv=None), uv_mask
 
 
