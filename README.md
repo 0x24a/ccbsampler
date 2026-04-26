@@ -1,6 +1,6 @@
 # ccbsampler
 
-A hifisampler rewrite with simpler setup and better cross-platform experience
+An ML-based UTAU resampler. Rebuilt from hifisampler with better cross-platform performance and user experience.
 
 ## Installation
 

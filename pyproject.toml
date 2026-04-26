@@ -1,7 +1,7 @@
 [project]
 name = "ccbsampler"
 version = "0.1.0"
-description = "A hifisampler rewrite with simpler setup and better cross-platform experience"
+description = "An ML-based UTAU resampler. Rebuilt from hifisampler with better cross-platform performance and user experience."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
