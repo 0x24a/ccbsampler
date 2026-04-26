@@ -168,9 +168,9 @@ class CascadedNet(nn.Module):
             n_fft=self.n_fft,
             hop_length=self.hop_length,
             return_complex=True,
-            window=self.window,
+            window=self.window,  # type: ignore[arg-type]
             pad_mode="constant",
-        )  # type: ignore[arg-type]
+        )
         return spec.reshape(B, C, spec.shape[-2], spec.shape[-1])
 
     def spec2audio(self, x: torch.Tensor) -> torch.Tensor:
@@ -190,9 +190,9 @@ class CascadedNet(nn.Module):
             n_fft=self.n_fft,
             hop_length=self.hop_length,
             return_complex=True,
-            window=self.window,
+            window=self.window,  # type: ignore[arg-type]
             pad_mode="constant",
-        )  # type: ignore[arg-type]
+        )
         spec = spec.reshape(B, C, spec.shape[-2], spec.shape[-1])
         spec_pred = (spec * self.forward(spec)).reshape(
             B * C, spec.shape[-2], spec.shape[-1]
