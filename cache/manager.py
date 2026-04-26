@@ -27,6 +27,10 @@ class AsyncFileLock:
 
 
 class CacheManager:
+    def __init__(self, max_concurrent_generation: int = 1) -> None:
+        # Limit concurrent mel extraction to avoid OOM when many cache misses hit simultaneously
+        self._generate_sem = asyncio.Semaphore(max_concurrent_generation)
+
     @staticmethod
     def cache_path(wav_path: Path, flag_suffix: str) -> Path:
         name = f"{wav_path.stem}_{flag_suffix}" if flag_suffix else wav_path.stem
@@ -41,27 +45,38 @@ class CacheManager:
     ) -> dict:
         cache_path = self.cache_path(wav_path, flag_suffix)
 
-        async with AsyncFileLock(cache_path):
-            if force:
-                logger.info("G flag set, forcing feature regeneration")
-                return await self._generate(cache_path, generate_fn)
+        # Check cache first without any lock (fast path for hits)
+        if not force and cache_path.exists():
+            try:
+                features = await asyncio.to_thread(
+                    lambda: dict(np.load(str(cache_path)))
+                )
+                logger.info("Cache hit: %s", cache_path.name)
+                return features
+            except (EOFError, OSError, ValueError):
+                pass  # corrupted — fall through to regenerate
 
-            if cache_path.exists():
-                try:
-                    features = await asyncio.to_thread(
-                        lambda: dict(np.load(str(cache_path)))
-                    )
-                    logger.info("Cache hit: %s", cache_path.name)
-                    return features
-                except (EOFError, OSError, ValueError) as e:
-                    logger.warning("Corrupted cache %s (%s), regenerating", cache_path.name, e)
+        # Cache miss or force: serialise generation to avoid OOM,
+        # then re-check inside the filelock in case another request
+        # already generated it while we were waiting.
+        async with self._generate_sem:
+            async with AsyncFileLock(cache_path):
+                if not force and cache_path.exists():
                     try:
-                        os.remove(cache_path)
-                    except OSError:
-                        pass
+                        features = await asyncio.to_thread(
+                            lambda: dict(np.load(str(cache_path)))
+                        )
+                        logger.info("Cache hit (after lock): %s", cache_path.name)
+                        return features
+                    except (EOFError, OSError, ValueError) as e:
+                        logger.warning("Corrupted cache %s (%s), regenerating", cache_path.name, e)
+                        try:
+                            os.remove(cache_path)
+                        except OSError:
+                            pass
 
-            logger.info("Cache miss: %s, generating", cache_path.name)
-            return await self._generate(cache_path, generate_fn)
+                logger.info("Cache miss: %s, generating", cache_path.name)
+                return await self._generate(cache_path, generate_fn)
 
     @staticmethod
     async def _generate(cache_path: Path, generate_fn) -> dict:

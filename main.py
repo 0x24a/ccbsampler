@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     settings = load_settings("config.yaml")
     logger.info("Loading models...")
     models = load_models(settings)
-    cache = CacheManager()
+    cache = CacheManager(max_concurrent_generation=1)
     renderer = Renderer(settings, models, cache)
 
     gpu_queue = GPUQueue(max_size=settings.performance.max_concurrent_renders)

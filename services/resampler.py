@@ -273,10 +273,22 @@ class Renderer:
         mel_t = torch.from_numpy(mel_render).unsqueeze(0).to(dtype=torch.float32)
         f0_t  = torch.from_numpy(f0_render).unsqueeze(0).to(dtype=torch.float32)
         wav_full = self.models.vocoder.infer(mel_t, f0_t)
+        logger.debug(
+            "vocoder: mel_frames=%d wav_samples=%d expected=%d",
+            mel_render.shape[1], len(wav_full), mel_render.shape[1] * self.cfg.audio.hop_size,
+        )
 
         sample_l = int(new_start * a.sample_rate)
         sample_r = int(new_end   * a.sample_rate)
+        sample_r = min(sample_r, len(wav_full))
         render = wav_full[sample_l:sample_r]
+
+        if len(render) == 0:
+            logger.warning(
+                "Empty render slice (sample_l=%d sample_r=%d wav_len=%d), writing silence",
+                sample_l, sample_r, len(wav_full),
+            )
+            render = np.zeros(max(int(length_req * a.sample_rate), 1), dtype=np.float32)
 
         a_flag = flags.get("A", 0)
         if a_flag and len(pitch_render) > 1:

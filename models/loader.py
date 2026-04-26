@@ -27,7 +27,7 @@ class CkptVocoder:
         from util.nsf_hifigan import NsfHifiGAN
 
         self._vocoder = NsfHifiGAN(model_path=model_path)
-        # mps has conv limitations with this model; fall back to cpu
+        # MPS: ConvTranspose1d output channels > 65536 not supported — fall back to CPU
         vocoder_device = torch.device("cpu") if device.type == "mps" else device
         self._vocoder.to_device(vocoder_device)
         self._device = vocoder_device
@@ -51,14 +51,16 @@ class OnnxVocoder:
                 break
         providers.append("CPUExecutionProvider")
 
-        self._session = onnxruntime.InferenceSession(str(model_path), providers=providers)
+        self._session = onnxruntime.InferenceSession(
+            str(model_path.resolve()), providers=providers
+        )
         logger.info("Loaded onnx vocoder with providers %s", self._session.get_providers())
 
     def infer(self, mel: torch.Tensor, f0: torch.Tensor) -> np.ndarray:
-        mel_np = mel.cpu().numpy().transpose(0, 2, 1).astype(np.float32) # [1, T, n_mels]
-        f0_np = f0.cpu().numpy().astype(np.float32) # [1, T]
+        mel_np = mel.cpu().numpy().astype(np.float32)  # [1, n_mels, T]
+        f0_np = f0.cpu().numpy().astype(np.float32)    # [1, T]
         output: Any = self._session.run(["waveform"], {"mel": mel_np, "f0": f0_np})[0]
-        return output[0] # [N]
+        return output.reshape(-1)  # flatten [1,1,N] or [1,N] or [N] → [N]
 
 
 @dataclass
@@ -109,12 +111,58 @@ class ModelBundle:
     mel_analysis: PitchAdjustableMelSpectrogram
 
 
+def _export_onnx(ckpt_path: Path) -> Path:
+    from util.nsf_hifigan import load_model as load_hifigan
+    onnx_path = ckpt_path.with_suffix(".onnx")
+    logger.info("Exporting vocoder to ONNX: %s", onnx_path)
+    generator, h = load_hifigan(ckpt_path)
+    generator.eval()
+    T = 100
+    mel_dummy = torch.randn(1, h.num_mels, T)
+    f0_dummy  = torch.full((1, T), 440.0)
+    with torch.no_grad():
+        torch.onnx.export(
+            generator,
+            (mel_dummy, f0_dummy),
+            str(onnx_path),
+            input_names=["mel", "f0"],
+            output_names=["waveform"],
+            dynamic_axes={
+                "mel":      {2: "frames"},
+                "f0":       {1: "frames"},
+                "waveform": {1: "samples"},
+            },
+            opset_version=18,
+            do_constant_folding=True,
+        )
+
+    # Inline external data so the .onnx is self-contained (required for CoreML EP)
+    import onnx
+    model_proto = onnx.load(str(onnx_path))
+    onnx.save_model(
+        model_proto,
+        str(onnx_path),
+        save_as_external_data=False,
+    )
+
+    logger.info("ONNX export done: %s (%.1f MB)", onnx_path, onnx_path.stat().st_size / 1_048_576)
+    return onnx_path
+
+
 def load_models(settings: Settings) -> ModelBundle:
     device = torch.device(settings.device)
     vocoder_path = Path(settings.model.vocoder_path)
 
     if settings.model.model_type == "ckpt":
-        vocoder: Vocoder = CkptVocoder(vocoder_path, device)
+        # Auto-export to ONNX if not present alongside the ckpt
+        onnx_path = vocoder_path.with_suffix(".onnx")
+        if onnx_path.exists():
+            logger.info("Found existing ONNX alongside ckpt, using it")
+            vocoder: Vocoder = OnnxVocoder(onnx_path)
+        else:
+            logger.info("No ONNX found, exporting from ckpt (one-time, may take a moment)")
+            onnx_path = _export_onnx(vocoder_path)
+            vocoder = OnnxVocoder(onnx_path)
     else:
         vocoder = OnnxVocoder(vocoder_path)
 
