@@ -1,0 +1,159 @@
+from __future__ import annotations
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+
+from . import layers
+
+
+class BaseNet(nn.Module):
+    def __init__(
+        self,
+        nin: int,
+        nout: int,
+        nin_lstm: int,
+        nout_lstm: int,
+        fixed_length: bool = True,
+    ) -> None:
+        super().__init__()
+        self.enc1 = layers.Conv2DBNActiv(nin, nout, 3, 1, 1)
+        self.enc2 = layers.Encoder(nout, nout * 2, 3, 2, 1)
+        self.enc3 = layers.Encoder(nout * 2, nout * 4, 3, 2, 1)
+        self.enc4 = layers.Encoder(nout * 4, nout * 6, 3, 2, 1)
+        self.enc5 = layers.Encoder(nout * 6, nout * 8, 3, 2, 1)
+        self.aspp = layers.ASPPModule(nout * 8, nout * 8, dropout=True)
+        self.dec4 = layers.Decoder(nout * (6 + 8), nout * 6, 3, 1, 1)
+        self.dec3 = layers.Decoder(nout * (4 + 6), nout * 4, 3, 1, 1)
+        self.dec2 = layers.Decoder(nout * (2 + 4), nout * 2, 3, 1, 1)
+        self.lstm_dec2 = layers.LSTMModule(nout * 2, nin_lstm, nout_lstm)
+        self.dec1 = layers.Decoder(nout * (1 + 2) + 1, nout * 1, 3, 1, 1)
+        self.fixed_length = fixed_length
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        e1 = self.enc1(x)
+        e2 = self.enc2(e1)
+        e3 = self.enc3(e2)
+        e4 = self.enc4(e3)
+        e5 = self.enc5(e4)
+        h = self.aspp(e5)
+        h = self.dec4(h, e4, fixed_length=self.fixed_length)
+        h = self.dec3(h, e3, fixed_length=self.fixed_length)
+        h = self.dec2(h, e2, fixed_length=self.fixed_length)
+        h = torch.cat([h, self.lstm_dec2(h)], dim=1)
+        return self.dec1(h, e1, fixed_length=self.fixed_length)
+
+
+class CascadedNet(nn.Module):
+    def __init__(
+        self,
+        n_fft: int,
+        hop_length: int,
+        nout: int = 32,
+        nout_lstm: int = 128,
+        is_complex: bool = False,
+        is_mono: bool = False,
+        fixed_length: bool = True,
+    ) -> None:
+        super().__init__()
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.seg_length = 32 * hop_length
+        self.is_complex = is_complex
+        self.is_mono = is_mono
+        self.register_buffer("window", torch.hann_window(n_fft), persistent=False)
+        self.max_bin = n_fft // 2
+        self.output_bin = n_fft // 2 + 1
+        self.nin_lstm = self.max_bin // 2
+        self.offset = 64
+
+        nin = 4 if is_complex else 2
+        if is_mono:
+            nin //= 2
+
+        self.stg1_low_band_net = nn.Sequential(
+            BaseNet(nin, nout // 2, self.nin_lstm // 2, nout_lstm, fixed_length=fixed_length),
+            layers.Conv2DBNActiv(nout // 2, nout // 4, 1, 1, 0),
+        )
+        self.stg1_high_band_net = BaseNet(nin, nout // 4, self.nin_lstm // 2, nout_lstm // 2, fixed_length=fixed_length)
+        self.stg2_low_band_net = nn.Sequential(
+            BaseNet(nout // 4 + nin, nout, self.nin_lstm // 2, nout_lstm, fixed_length=fixed_length),
+            layers.Conv2DBNActiv(nout, nout // 2, 1, 1, 0),
+        )
+        self.stg2_high_band_net = BaseNet(nout // 4 + nin, nout // 2, self.nin_lstm // 2, nout_lstm // 2, fixed_length=fixed_length)
+        self.stg3_full_band_net = BaseNet(3 * nout // 4 + nin, nout, self.nin_lstm, nout_lstm, fixed_length=fixed_length)
+        self.out = nn.Conv2d(nout, nin, 1, bias=False)
+        self.aux_out = nn.Conv2d(3 * nout // 4, nin, 1, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.is_complex:
+            x = torch.cat([x.real, x.imag], dim=1)
+        x = x[:, :, : self.max_bin]
+        bandw = x.size(2) // 2
+        l1 = self.stg1_low_band_net(x[:, :, :bandw])
+        h1 = self.stg1_high_band_net(x[:, :, bandw:])
+        aux1 = torch.cat([l1, h1], dim=2)
+        l2 = self.stg2_low_band_net(torch.cat([x[:, :, :bandw], l1], dim=1))
+        h2 = self.stg2_high_band_net(torch.cat([x[:, :, bandw:], h1], dim=1))
+        f3 = self.stg3_full_band_net(torch.cat([x, aux1, torch.cat([l2, h2], dim=2)], dim=1))
+
+        if self.is_complex:
+            mask = self.out(f3)
+            mask = torch.complex(
+                mask[:, :1] if self.is_mono else mask[:, :2],
+                mask[:, 1:] if self.is_mono else mask[:, 2:],
+            )
+            mask = self.bounded_mask(mask)
+        else:
+            mask = torch.sigmoid(self.out(f3))
+
+        return F.pad(mask, (0, 0, 0, self.output_bin - mask.size(2)), mode="replicate")
+
+    def bounded_mask(self, mask: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+        mag = torch.abs(mask)
+        return torch.tanh(mag) * mask / (mag + eps)
+
+    def predict_mask(self, x: torch.Tensor) -> torch.Tensor:
+        mask = self.forward(x)
+        if self.offset > 0:
+            mask = mask[:, :, :, self.offset : -self.offset]
+            assert mask.size(3) > 0
+        return mask
+
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
+        pred = x * self.forward(x)
+        if self.offset > 0:
+            pred = pred[:, :, :, self.offset : -self.offset]
+            assert pred.size(3) > 0
+        return pred
+
+    def audio2spec(self, x: torch.Tensor, use_pad: bool = False) -> torch.Tensor:
+        B, C, T = x.shape
+        x = x.reshape(B * C, T)
+        if use_pad:
+            T1 = T + self.hop_length
+            T_pad = self.seg_length * ((T1 - 1) // self.seg_length + 1) - T1
+            nl_pad = T_pad // 2 // self.hop_length
+            x = F.pad(x, (nl_pad * self.hop_length, T_pad - nl_pad * self.hop_length))
+        spec = torch.stft(x, n_fft=self.n_fft, hop_length=self.hop_length,
+                          return_complex=True, window=self.window, pad_mode="constant")  # type: ignore[arg-type]
+        return spec.reshape(B, C, spec.shape[-2], spec.shape[-1])
+
+    def spec2audio(self, x: torch.Tensor) -> torch.Tensor:
+        B, C, N, T = x.shape
+        x = torch.istft(x.reshape(-1, N, T), self.n_fft, self.hop_length, window=self.window)  # type: ignore[arg-type]
+        return x.reshape(B, C, -1)
+
+    def predict_fromaudio(self, x: torch.Tensor) -> torch.Tensor:
+        B, C, T = x.shape
+        T1 = T + self.hop_length
+        T_pad = self.seg_length * ((T1 - 1) // self.seg_length + 1) - T1
+        nl_pad = T_pad // 2 // self.hop_length
+        Tl_pad = nl_pad * self.hop_length
+        xp = F.pad(x.reshape(B * C, T), (Tl_pad, T_pad - Tl_pad))
+        spec = torch.stft(xp, n_fft=self.n_fft, hop_length=self.hop_length,
+                          return_complex=True, window=self.window, pad_mode="constant")  # type: ignore[arg-type]
+        spec = spec.reshape(B, C, spec.shape[-2], spec.shape[-1])
+        spec_pred = (spec * self.forward(spec)).reshape(B * C, spec.shape[-2], spec.shape[-1])
+        x_pred = torch.istft(spec_pred, self.n_fft, self.hop_length, window=self.window)  # type: ignore[arg-type]
+        return x_pred[:, Tl_pad : Tl_pad + T].reshape(B, C, T)

@@ -1,0 +1,7 @@
+{
+  "pythonVersion": "3.11",
+  "venvPath": ".",
+  "venv": ".venv",
+  "exclude": [".venv"],
+  "reportPrivateImportUsage": "none"
+}

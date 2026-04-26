@@ -1,7 +1,34 @@
 [project]
 name = "ccbsampler"
 version = "0.1.0"
-description = "Add your description here"
+description = "A hifisampler rewrite with simpler setup and better cross-platform experience"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "fastapi>=0.136.1",
+    "filelock>=3.29.0",
+    "httpx>=0.28.1",
+    "librosa>=0.11.0",
+    "numpy>=2.4.4",
+    "onnxruntime>=1.25.0",
+    "praat-parselmouth>=0.4.7",
+    "pydantic>=2.13.3",
+    "pydantic-settings>=2.14.0",
+    "pyloudnorm>=0.2.0",
+    "pyworld>=0.3.5",
+    "pyyaml>=6.0.3",
+    "resampy>=0.4.3",
+    "rich>=15.0.0",
+    "scipy>=1.17.1",
+    "soundfile>=0.13.1",
+    "torch>=2.11.0",
+    "tqdm>=4.67.3",
+    "typer>=0.24.2",
+    "uvicorn>=0.46.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.409",
+    "ruff>=0.15.12",
+]

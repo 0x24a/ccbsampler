@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# hnsep model
+hnsep/vr/model.pt
+
+# hifigan
+pc_nsf_hifigan_44.1k_hop512_128bin_2025.02/
