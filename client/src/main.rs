@@ -80,7 +80,6 @@ struct ResampleResponse {
     metrics: Option<RenderMetrics>,
 }
 
-
 fn main() -> Result<()> {
     let raw_args: Vec<String> = std::env::args().collect();
     log(&format!("=== args: {raw_args:?}"));

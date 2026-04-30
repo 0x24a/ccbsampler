@@ -4,12 +4,12 @@ use std::collections::HashMap;
 fn to_uint6(c: char) -> i32 {
     let c = c as i32;
     match c {
-        97..=122 => c - 71,  // a-z
-        65..=90  => c - 65,  // A-Z
-        48..=57  => c + 4,   // 0-9
-        43       => 62,      // +
-        47       => 63,      // /
-        _        => 0,
+        97..=122 => c - 71, // a-z
+        65..=90 => c - 65,  // A-Z
+        48..=57 => c + 4,   // 0-9
+        43 => 62,           // +
+        47 => 63,           // /
+        _ => 0,
     }
 }
 
@@ -18,7 +18,11 @@ fn to_int12(s: &str) -> i32 {
     let hi = to_uint6(chars.next().unwrap_or('A'));
     let lo = to_uint6(chars.next().unwrap_or('A'));
     let uint12 = (hi << 6) | lo;
-    if (uint12 >> 11) & 1 == 1 { uint12 - 4096 } else { uint12 }
+    if (uint12 >> 11) & 1 == 1 {
+        uint12 - 4096
+    } else {
+        uint12
+    }
 }
 
 fn decode_b64_stream(s: &str) -> Vec<f64> {
@@ -59,13 +63,10 @@ pub fn decode(pitch_string: &str) -> Vec<f64> {
     result
 }
 
-
 pub fn parse_flags(flags: &str) -> HashMap<String, Value> {
     const FLAG_KEYS: &[&str] = &[
-        "Hb", "Hv", "Ht", "He",
-        "fe", "fl", "fo", "fv", "fp",
-        "ve", "vo",
-        "g", "t", "A", "B", "P", "S", "p", "R", "D", "C", "Z", "G",
+        "Hb", "Hv", "Ht", "He", "fe", "fl", "fo", "fv", "fp", "ve", "vo", "g", "t", "A", "B", "P",
+        "S", "p", "R", "D", "C", "Z", "G",
     ];
 
     let mut map = HashMap::new();
