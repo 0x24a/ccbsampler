@@ -1,0 +1,76 @@
+name: Build Rust Client
+
+on:
+  push:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: ccbsampler-client-linux-x64
+            binary: ccbsampler-client
+          - name: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: ccbsampler-client-windows-x64
+            binary: ccbsampler-client.exe
+          - name: darwin-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: ccbsampler-client-darwin-arm64
+            binary: ccbsampler-client
+          - name: darwin-x64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: ccbsampler-client-darwin-x64
+            binary: ccbsampler-client
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo registry and build outputs
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client -> target
+          key: ${{ matrix.target }}
+
+      - name: Build client
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${{ matrix.binary }}"
+          tar -czf "${{ matrix.artifact }}.tar.gz" -C dist "${{ matrix.binary }}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: client/${{ matrix.artifact }}.tar.gz
+
+      - name: Upload release asset
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: client/${{ matrix.artifact }}.tar.gz
