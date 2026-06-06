@@ -33,11 +33,7 @@ uv run main.py
 
 ## Intergrate with OpenUtau
 
-There isn't a pre-built ccbsampler-client binary yet, so you will have to build your own.
-
-```
-cd client && cargo build --release
-```
+Download the build artifact for your architecture from [Actions](https://github.com/0x24a/ccbsampler/actions)
 
 And copy the build artifact to your "Resamplers" folder and set it as the default resampler(optional). (OpenUtau -> Select Renderer -> CLASSIC -> Settings Icon -> Resampler)
 
