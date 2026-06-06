@@ -33,7 +33,7 @@ uv run main.py
 
 ## Intergrate with OpenUtau
 
-Download the build artifact for your architecture from [Actions](https://github.com/0x24a/ccbsampler/actions)
+Download the build artifact for your architecture from [Actions](https://github.com/0x24a/ccbsampler/actions/workflows/build-rust-client.yml)
 
 And copy the build artifact to your "Resamplers" folder and set it as the default resampler(optional). (OpenUtau -> Select Renderer -> CLASSIC -> Settings Icon -> Resampler)
 
