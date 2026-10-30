@@ -115,7 +115,7 @@ Use it to compare `infer_ms` between providers on your own machine as noted abov
 Make sure the swap actually took effect. `uv remove onnxruntime` must succeed so `onnxruntime` itself is gone from the environment, having both installed can shadow the GPU build. Then restart the server.
 
 **`device: cuda` / `device: mps` set, but no speedup.**
-Completely expected. `device` only affects mel extraction and hnsep, not the vocoder. See [Background](#background-what-runs-where).
+Completely expected. `device` only affects mel extraction and hnsep, not the vocoder. See [Vocoder and Mel Extraction & hnsep Separation Runtimes](#vocoder-and-mel-extraction--hnsep-separation-runtimes).
 
 **hnsep separation (`Hb`/`Hv`/`Ht` flags) is slow on Apple Silicon.**
 hnsep runs through PyTorch and does use MPS when available; it's simply a heavier model. If you don't use these flags, you can disable hnsep entirely by removing `hnsep_model_path` from `config.yaml`, the server then loads one less model and rejects those flags.
