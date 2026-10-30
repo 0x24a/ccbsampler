@@ -22,6 +22,17 @@ class ModelConfig(BaseSettings):
     vocoder_path: str = "./pc_nsf_hifigan_44.1k_hop512_128bin_2025.02/model.ckpt"
     model_type: str = "ckpt"  # inferred from suffix
     hnsep_model_path: str | None = None  # None = disabled
+    # ONNX Runtime execution provider for the vocoder:
+    # auto (Dml -> CUDA -> CoreML -> CPU) | directml | cuda | coreml | cpu
+    provider: str = "auto"
+
+    @field_validator("provider", mode="before")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        allowed = {"auto", "directml", "cuda", "coreml", "cpu"}
+        if v not in allowed:
+            raise ValueError(f"provider must be one of {allowed}")
+        return v
 
 
 class AudioConfig(BaseSettings):

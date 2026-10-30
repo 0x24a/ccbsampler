@@ -42,20 +42,45 @@ class CkptVocoder:
         return wav.cpu().numpy()
 
 
-class OnnxVocoder:
-    def __init__(self, model_path: Path) -> None:
-        available = onnxruntime.get_available_providers()
-        providers: list[str] = []
-        for ep in (
-            "DmlExecutionProvider",
-            "CUDAExecutionProvider",
-            "CoreMLExecutionProvider",
-        ):
-            if ep in available:
-                providers.append(ep)
-                break
-        providers.append("CPUExecutionProvider")
+_PROVIDER_BY_NAME = {
+    "directml": "DmlExecutionProvider",
+    "cuda": "CUDAExecutionProvider",
+    "coreml": "CoreMLExecutionProvider",
+    "cpu": "CPUExecutionProvider",
+}
 
+
+def _select_providers(preferred: str) -> list[str]:
+    """Map config provider to an ORT provider list.
+
+    auto: first available of Dml / CUDA / CoreML, plus CPU fallback.
+    otherwise: only the named provider (error out if unavailable) + CPU fallback.
+    """
+    available = onnxruntime.get_available_providers()
+
+    if preferred == "auto":
+        wanted = ["DmlExecutionProvider", "CUDAExecutionProvider",
+                  "CoreMLExecutionProvider"]
+        for ep in wanted:
+            if ep in available:
+                return [ep, "CPUExecutionProvider"]
+        return ["CPUExecutionProvider"]
+
+    ep = _PROVIDER_BY_NAME[preferred]
+    if ep not in available:
+        raise ValueError(
+            f"provider '{preferred}' ({ep}) is not available in this "
+            f"onnxruntime build; available: {available}. "
+            "Install the matching onnxruntime package or use provider: auto."
+        )
+    if ep == "CPUExecutionProvider":
+        return [ep]
+    return [ep, "CPUExecutionProvider"]
+
+
+class OnnxVocoder:
+    def __init__(self, model_path: Path, provider: str = "auto") -> None:
+        providers = _select_providers(provider)
         self._session = onnxruntime.InferenceSession(
             str(model_path.resolve()), providers=providers
         )
@@ -174,15 +199,15 @@ def load_models(settings: Settings) -> ModelBundle:
         onnx_path = vocoder_path.with_suffix(".onnx")
         if onnx_path.exists():
             logger.info("Found existing ONNX alongside ckpt, using it")
-            vocoder: Vocoder = OnnxVocoder(onnx_path)
+            vocoder: Vocoder = OnnxVocoder(onnx_path, settings.model.provider)
         else:
             logger.info(
                 "No ONNX found, exporting from ckpt (one-time, may take a moment)"
             )
             onnx_path = _export_onnx(vocoder_path)
-            vocoder = OnnxVocoder(onnx_path)
+            vocoder = OnnxVocoder(onnx_path, settings.model.provider)
     else:
-        vocoder = OnnxVocoder(vocoder_path)
+        vocoder = OnnxVocoder(vocoder_path, settings.model.provider)
 
     hnsep: HnsepBundle | None = None
     if settings.model.hnsep_model_path is not None:
