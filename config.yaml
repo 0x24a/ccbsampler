@@ -16,4 +16,4 @@ processing:
   peak_limit: 1.0
   fill: 6
 performance:
-  max_concurrent_renders: 8
+  max_concurrent_renders: 4
