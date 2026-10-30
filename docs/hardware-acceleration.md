@@ -3,9 +3,9 @@
 How to get ccbsampler's vocoder running on your GPU and how to tell whether it worked.
 
 > [!NOTE]
-> Hardware acceleration is NOT always faster. GPU execution providers add overhead, and for a small, per-note model like this vocoder that overhead can outweigh the gains. Especially on macOS, where CoreML may actually lose to the CPU Provider on long notes. Don't assume GPU is better: compare `infer_ms` in the per-render log with and without enabling the GPU provider and keep whichever suits your machine.
+> Hardware acceleration is NOT always faster. GPU execution providers add overhead, and for a small, per-note model like this vocoder that overhead can outweigh the gains. Especially on macOS, where CoreML may actually be slower than the CPU Provider on long notes. Don't assume GPU is better. Instead, compare `infer_ms` in the per-render log with and without enabling the GPU provider and keep whichever suits your machine.
 
-## Background: what runs where
+## Vocoder and Mel Extraction & hnsep Separation Runtimes
 
 ccbsampler uses two runtimes, and the `device` setting in `config.yaml` only controls one of them:
 
