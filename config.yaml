@@ -1,7 +1,7 @@
 model:
   vocoder_path: "pc_nsf_hifigan_44.1k_hop512_128bin_2025.02/model.ckpt"
   hnsep_model_path: "hnsep/vr/model.pt"
-  provider: "auto"
+  provider: "cpu"
 audio:
   sample_rate: 44100
   win_size: 2048
