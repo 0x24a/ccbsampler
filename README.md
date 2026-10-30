@@ -22,7 +22,7 @@ uv sync
 ### 3. Download models
 
 ```
-uv run setup.py models
+uv run setup.py
 ```
 
 ### 4. Run the server
