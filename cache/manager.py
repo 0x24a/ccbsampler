@@ -6,30 +6,21 @@ import os
 from pathlib import Path
 
 import numpy as np
-from filelock import FileLock
 
 logger = logging.getLogger(__name__)
 
 CACHE_EXT = ".hifi.npz"
-LOCK_TIMEOUT = 60
-
-
-class AsyncFileLock:
-    def __init__(self, path: Path) -> None:
-        self._lock = FileLock(str(path) + ".lock", timeout=LOCK_TIMEOUT)
-
-    async def __aenter__(self) -> AsyncFileLock:
-        await asyncio.to_thread(self._lock.acquire)
-        return self
-
-    async def __aexit__(self, *_: object) -> None:
-        self._lock.release()
 
 
 class CacheManager:
     def __init__(self, max_concurrent_generation: int = 1) -> None:
         # Limit concurrent mel extraction to avoid OOM when many cache misses hit simultaneously
         self._generate_sem = asyncio.Semaphore(max_concurrent_generation)
+        self._path_locks: dict[Path, asyncio.Lock] = {}
+
+    def _lock_for(self, path: Path) -> asyncio.Lock:
+        # Serving one asyncio loop, so a dict lookup is safe without extra sync
+        return self._path_locks.setdefault(path, asyncio.Lock())
 
     @staticmethod
     def cache_path(wav_path: Path, flag_suffix: str) -> Path:
@@ -57,10 +48,10 @@ class CacheManager:
                 pass  # corrupted — fall through to regenerate
 
         # Cache miss or force: serialise generation to avoid OOM,
-        # then re-check inside the filelock in case another request
+        # then re-check under the per-path lock in case another request
         # already generated it while we were waiting.
         async with self._generate_sem:
-            async with AsyncFileLock(cache_path):
+            async with self._lock_for(cache_path):
                 if not force and cache_path.exists():
                     try:
                         features = await asyncio.to_thread(
